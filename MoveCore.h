@@ -63,6 +63,7 @@ class MoveCore{
   //functions' parameter
   static const float KEEP = 255;
   static void Move(Moves MOV, int Parameter);
+  static void SetSpeedFactor(int value);
   static void set_site(int leg, float x, float y, float z);
 #define NUMLEGS 4
 #define NUMAXIS 3

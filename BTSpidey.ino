@@ -292,6 +292,26 @@ void PrintHelp(void){
   TSerial.print((char)MOV_HEADDOWN);TSerial.print(F(":HeadDown,"));
   TSerial.print((char)MOV_NO);TSerial.println(F(":No"));
 }
+  static int16_t IdleCounter;
+  static bool Idle;
+
+void idle(){
+  if (IdleCounter++>65000){
+    TSerial.println(F("Saving Power"));
+    FlexiTimer2::start();
+    Mover.Move(MOV_SIT,0);
+    FlexiTimer2::stop();
+    for (int i=0; i<13;i++){
+      Srv.writeCount(i,0);
+    }
+    Idle=true;
+  }
+}
+
+void notidle(){
+  Idle=false;  FlexiTimer2::start();
+  IdleCounter=0;
+}
 
 void loop() {
   char input[INPUT_SIZE+1];
@@ -301,6 +321,12 @@ void loop() {
   int8_t RX_Y;
   uint16_t Value;
   String inp;
+  if (!Idle){
+    idle();
+  }else{
+    IdleCounter=0;
+  }
+//  TSerial.println(IdleCounter);
   digitalWrite(LED,digitalRead(BT_STATE));
 
   if (!TSerial.running)TSerial.go();
@@ -391,22 +417,29 @@ void loop() {
                   Srv.CalBackup((int)&NVM->ServoSpec);
                 }else{ PrintUpdateMessage();};
                 Srv.CalPrint();break;
-      case 'U': if (input=="UNPROTECT"){EnableUpdates();};break;
-      case 'P': if (input=="PROTECT"){DisableUpdates();};break;
+      case 'U': if ((input[1]=='N')&&(input[2]=='P')&&(input[3]=='R')&&(input[4]=='O')&&(input[5]=='T')){
+                  TSerial.println(input);
+                  EnableUpdates();
+                };
+                break;
+      case 'P': if ((input[1]=='R')&&(input[2]=='O')&&(input[3]=='T')&&(input[4]=='E')&&(input[5]=='C')&&(input[6]=='T')){
+                  TSerial.println(input);
+                  DisableUpdates();};break;
 //      case 'A': SwipeServo(Value,20);break;
 //      case 's': Position(ServoID,300);break;
 //      case 'S': Position(ServoID,100);break;
-      case MOV_STEPFORWARD: Mover.Move(MOV_STEPFORWARD,1);break;
-      case MOV_STEPBACK: Mover.Move(MOV_STEPBACK,1);break;
-      case MOV_TURNLEFT: Mover.Move(MOV_TURNLEFT,1);break;
-      case MOV_TURNRIGHT: Mover.Move(MOV_TURNRIGHT,5);break;
-      case MOV_STAND: Mover.Move(MOV_STAND,0);break;
-      case MOV_SIT: Mover.Move(MOV_SIT,0);break;
-      case MOV_HANDWAVE: Mover.Move(MOV_HANDWAVE,0);break;
-      case MOV_HANDSHAKE: Mover.Move(MOV_HANDSHAKE,0);break;
-      case MOV_HEADUP: Mover.Move(MOV_HEADUP,20);break;
-      case MOV_HEADDOWN: Mover.Move(MOV_HEADUP,0);break;
-      case MOV_NO: Mover.Move(MOV_NO,Value);break;
+      case 'W': Mover.SetSpeedFactor(Value);break;
+      case MOV_STEPFORWARD: notidle();Mover.Move(MOV_STEPFORWARD,1);break;
+      case MOV_STEPBACK: notidle(); Mover.Move(MOV_STEPBACK,1);break;
+      case MOV_TURNLEFT: notidle(); Mover.Move(MOV_TURNLEFT,1);break;
+      case MOV_TURNRIGHT: notidle(); Mover.Move(MOV_TURNRIGHT,1);break;
+      case MOV_STAND: notidle(); Mover.Move(MOV_STAND,0);break;
+      case MOV_SIT: notidle(); Mover.Move(MOV_SIT,0);break;
+//'      case MOV_HANDWAVE: Mover.Move(MOV_HANDWAVE,3);break;
+      case MOV_HANDSHAKE: notidle(); Mover.Move(MOV_HANDSHAKE,3);break;
+      case MOV_HEADUP: notidle(); Mover.Move(MOV_HEADUP,20);break;
+      case MOV_HEADDOWN: notidle(); Mover.Move(MOV_HEADUP,-20);break;
+      case MOV_NO: notidle(); Mover.Move(MOV_NO,3);break;
       case '^': asm volatile ("  jmp 0");break;
       case 'q': FormatBlueTooth();break;
       case 'Q': CheckBlueTooth();break;

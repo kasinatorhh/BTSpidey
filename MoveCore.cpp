@@ -36,6 +36,10 @@ float ServoSpeed[NUMSERVOS];
 float ServoDelta[NUMSERVOS];
 
 void MoveCore::Move(Moves MOV, int Parameter){
+  TSerial.print("Mover: ");
+  TSerial.print(MOV);
+  TSerial.print(' ');
+  TSerial.println(Parameter);
   switch(MOV){
     case MOV_INIT:
       set_site(0, x_default - x_offset, y_start + y_step, z_boot);
@@ -53,9 +57,14 @@ void MoveCore::Move(Moves MOV, int Parameter){
       case MOV_STEPFORWARD: step_forward(1);break;
       case MOV_STEPBACK: step_back(1);break;
       case MOV_TURNLEFT: turn_left(1);break;
-      case MOV_TURNRIGHT: turn_right(5);break;
+      case MOV_TURNRIGHT: turn_right(1);break;
       case MOV_STAND: stand();break;
       case MOV_SIT: sit();break;
+      case MOV_HANDWAVE: hand_wave(Parameter);break;
+      case MOV_HANDSHAKE: hand_shake(Parameter);break;
+      case MOV_HEADUP: head_up(Parameter);break;
+      case MOV_HEADDOWN: head_down(Parameter);break;
+      case MOV_NO: No(Parameter);break;
   }
 }
 /********************************+
@@ -546,6 +555,12 @@ void MoveCore::head_down(int i)
   set_site(2, KEEP, KEEP, site_now[2][2] + i);
   set_site(3, KEEP, KEEP, site_now[3][2] - i);
   wait_all_reach();
+}
+
+void MoveCore::SetSpeedFactor(int Value){
+  TSerial.print(F("Setting Speed to:"));
+  speed_multiple = Value/(float)100;  
+  TSerial.println(speed_multiple);
 }
 
 //void body_dance(int i)
