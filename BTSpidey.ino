@@ -4,7 +4,6 @@
   https://www.thingiverse.com/thing:4070234
   The Spider uses pins see chapter pinmapping below
   
-  Written by Limor Fried/Ladyada for Adafruit Industries.  
   BSD license, all text above must be included in any redistribution
  ****************************************************/
 #define ENABLE_DEBUG_OUTPUT
@@ -309,6 +308,7 @@ void idle(){
 }
 
 void notidle(){
+  Mover.SetAllLegMode(0);
   Idle=false;  FlexiTimer2::start();
   IdleCounter=0;
 }
@@ -316,6 +316,7 @@ void notidle(){
 void loop() {
   char input[INPUT_SIZE+1];
   char cmd;
+  bool TerminalMode=false;
   uint8_t ServoID;
   int8_t RX_X;
   int8_t RX_Y;
@@ -327,9 +328,9 @@ void loop() {
     IdleCounter=0;
   }
 //  TSerial.println(IdleCounter);
-  digitalWrite(LED,digitalRead(BT_STATE));
+//  digitalWrite(LED,digitalRead(BT_STATE));
 
-  if (!TSerial.running)TSerial.go();
+//Clear Arrays
   for (int i = 0; i < sizeof(input);i++){
     input[i]=0;
   }
@@ -347,127 +348,163 @@ void loop() {
       break;
     }
   }
+
 //  if (TSerial.available()){// While serial data are available we store it. Prio on HW
 //    rxlen=TSerial.readBytes(input,INPUT_SIZE);
 //    input[rxlen]=0;
 //  }
-  if (rxlen>0){
-    printHEX(rxlen,input);
+  if (input[0]=='+'){ //disconnect command
+    
+//    rxlen=0;//do not handle
   }
+      
   if (rxlen>0){
-    if (input[0]=='%'){ //DIY Bluetooth Sender
-      //parsing bytes
-      RX_X=0;RX_Y=0;
-      for (int i=1;i<rxlen;i++){
-        if (input[i]=='X'){
-          RX_X=input[++i]-48;
-        }else if (input[i]=='Y'){
-          RX_Y=input[++i]-48;
-        }
+    TerminalMode=((input[rxlen-1]==0x0A)&&(input[rxlen-2]==0x0D));//Enable Short-Bandwidth BT Senders
+    if (TerminalMode){
+      printHEX(rxlen,input);
+      //others
+      ServoID=15;
+      Value=65535;
+      char* command = strtok(input, " ;\n");
+      cmd=command[0];
+      char* separator= strtok(NULL,' ');
+      
+      if (separator != NULL) ServoID=atoi(separator);
+      ++separator;
+      Value=atoi(++separator);
+      TSerial.print(F("Command:"));TSerial.print(cmd);
+      TSerial.print(F(",ServoID:"));TSerial.print(ServoID);
+      TSerial.print(F(",Value:"));TSerial.println(Value);
+      switch (cmd){
+        case 'g': FlexiTimer2::stop();pwm.setPWM(ServoID,0,Value);break;
+        case 'G': PosServo(ServoID, (float)(int)Value);break;
+        case 'x': FlexiTimer2::stop();InitPWM();Srv.Detatch(-1);break;
+        case 'X': InitPWM();Srv.Attach(-1);FlexiTimer2::start();break;
+        case 'y': Srv.write(Mover.ServoIdx(0,ServoID),(float)(int)Value);
+                  Srv.write(Mover.ServoIdx(1,ServoID),(float)(int)Value);
+                  Srv.write(Mover.ServoIdx(2,ServoID),(float)(int)Value);
+                  Srv.write(Mover.ServoIdx(3,ServoID),(float)(int)Value);
+                  break;
+        case 'Y': SyncServoMove(Value,20);break;
+        case 'd': SetValue(ServoID, SRV_MODE,F("Direction? 0=straight 1=invert"),Value);break;
+        case 'N': SetValue(ServoID, SRV_MIN, F("Min, 300?"),Value);break;
+        case 'M': SetValue(ServoID, SRV_MAX, F("Max, 500?"),Value);break;
+        case 'r': SetValue(ServoID, SRV_REF90, F("Center Position"),Value);break;
+        case '0': SetValue(ServoID, SRV_REF0, F("-90 Degrees"),Value);break;
+        case 'R': SetValue(ServoID, SRV_REF180, F("90 Degrees"),Value);break;
+        case '?': Srv.PrintPos();break;
+        case '!': Srv.PrintPCA9685();break;
+        case '#': Srv.CalPrint();break;
+        case '*': Srv.InitServoParameters(ServoID,ServoID,SRV_MODE_INVALID,SERVOMIN,SERVOMAX,SERVOMIN,SERVOMAX-SERVOMIN/2,SERVOMAX);
+                  if (UpdatesEnabled()){
+                    Srv.CalBackup((int)&NVM->ServoSpec);
+                  }else{ PrintUpdateMessage();};
+                  Srv.CalPrint();break;
+        case 'U': if ((input[1]=='N')&&(input[2]=='P')&&(input[3]=='R')&&(input[4]=='O')&&(input[5]=='T')){
+                    TSerial.println(input);
+                    EnableUpdates();
+                  };
+                  break;
+        case 'P': if ((input[1]=='R')&&(input[2]=='O')&&(input[3]=='T')&&(input[4]=='E')&&(input[5]=='C')&&(input[6]=='T')){
+                    TSerial.println(input);
+                    DisableUpdates();};break;
+  //      case 'A': SwipeServo(Value,20);break;
+  //      case 's': Position(ServoID,300);break;
+  //      case 'S': Position(ServoID,100);break;
+        case 'W': Mover.SetSpeedFactor(Value);break;
+        case MOV_STEPFORWARD: 
+        case MOV_STEPBACK:
+        case MOV_TURNLEFT:
+        case MOV_TURNRIGHT:
+        case MOV_STAND:
+        case MOV_TRANSPORT:
+        case MOV_SIT: notidle();Mover.Move(cmd,1);break;
+  //'      case MOV_HANDWAVE: Mover.Move(MOV_HANDWAVE,3);break;
+        case MOV_HANDSHAKE: notidle(); Mover.Move(MOV_HANDSHAKE,3);break;
+        case MOV_HEADUP: notidle(); Mover.Move(MOV_HEADUP,20);break;
+        case MOV_HEADDOWN: notidle(); Mover.Move(MOV_HEADUP,-20);break;
+        case MOV_NO: notidle(); Mover.Move(MOV_NO,3);break;
+        case '^': asm volatile ("  jmp 0");break;
+        case 'q': FormatBlueTooth();break;
+        case 'Q': CheckBlueTooth();break;
+        case 27: cmd=command[2];
+                 switch (cmd)
+                 {
+                  case 65:TSerial.println("up");Mover.Move(MOV_STEPFORWARD,1);break;
+                  case 66:TSerial.println("down");Mover.Move(MOV_STEPBACK,1);break;
+                  case 67:TSerial.println("right");Mover.Move(MOV_TURNRIGHT,1);break;
+                  case 68:TSerial.println("left");Mover.Move(MOV_TURNLEFT,1);break;
+                  case 50:TSerial.println("ins");Mover.Move(MOV_HANDSHAKE,1);break;
+                  case 51:TSerial.println("del");Mover.Move(MOV_HANDWAVE,1);break;
+                  case 53:TSerial.println("pgup");Mover.Move(MOV_STAND,0);break;
+                  case 54:TSerial.println("pgdn");Mover.Move(MOV_SIT,0);break;
+                  default:TSerial.println((int)cmd);break;                
+                 }
+                 break;
+        case 'D' : ServoDebug=Value;TSerial.print(F("ServoDebug:"));
+                  TSerial.println(Value);break;
+        default : TSerial.println("Unknown command:");
+                  TSerial.println((int)command[0]);
+                  TSerial.println((int)command[1]);
+                  TSerial.println((int)command[2]);
+                  PrintHelp();
       }
-      RX_X-=4;RX_Y-=4;
-      TSerial.print(F("X="));
-      TSerial.print(RX_X);
-      TSerial.print(F(" Y="));
-      TSerial.println(-RX_Y);
-      rxlen=0;//mark handled
-    }else if (input[0]=='+'){ //disconnect command
-      rxlen=0;//do not handle
-    }
-    if ((rxlen>0)&&((input[1]=='X')||(input[3]=='Y')||(input[5]==';'))){//assume DIY Bluetooth mode. (there are bit-errors)
-      rxlen=0;
-      Serial.println(F("Cleaning unhandled BT DIY commands"));
+      if (!TSerial.running)TSerial.go();
+      TSerial.println("Done");
+      command = strtok(0, 10);
+    }else{
+      if (input[0]=='%'){ //DIY Bluetooth Sender
+        //parsing bytes
+        RX_X=0;RX_Y=0;
+        for (int i=1;i<rxlen;i++){
+          if (input[i]=='X'){
+            RX_X=input[++i]-48;
+          }else if (input[i]=='Y'){
+            RX_Y=input[++i]-48;
+          }
+        }
+        RX_X-=4;RX_Y-=4;
+        TSerial.print(F("X="));
+        TSerial.print(RX_X);
+        TSerial.print(F(" Y="));
+        TSerial.println(-RX_Y);
+        rxlen=0;//mark handled
+      }
+      if ((rxlen>0)&&((input[1]=='X')||(input[3]=='Y')||(input[5]==';'))){//assume DIY Bluetooth mode. (there are bit-errors)
+        rxlen=0;
+        Serial.println(F("Cleaning unhandled BT DIY commands"));
+      }
+      if (input[0]==input[1]){//redundant transmission agains biterrors
+        if ((input[0]>64)&&(input[0]<91)){//A-Z
+          Mover.SetSpeedFactor(400);
+          input[0]+=32;//convert LowerCase
+        }else{
+          Mover.SetSpeedFactor(100);
+        }
+        switch (input[0]){
+          case MOV_STEPFORWARD: 
+          case MOV_STEPBACK:
+          case MOV_TURNLEFT:
+          case MOV_TURNRIGHT:
+          case MOV_STAND:
+          case MOV_TRANSPORT:
+          case MOV_SIT: notidle();Mover.Move(input[0],1);break;
+          case MOV_HANDSHAKE: notidle(); Mover.Move(MOV_HANDSHAKE,3);break;
+          case MOV_HEADUP: notidle(); Mover.Move(MOV_HEADUP,20);break;
+          case MOV_HEADDOWN: notidle(); Mover.Move(MOV_HEADUP,-20);break;
+          case MOV_NO: notidle(); Mover.Move(MOV_NO,3);break;
+          case 'W': if (input[1]>2){
+                      Mover.SetSpeedFactor(input[1]*10);
+                    }
+                    break;
+          default: TSerial.println(F("???"));
+          }
+        TSerial.print(input[0]);
+        TSerial.println(F(",°RY"));
+      }
     }
   }
-  //others
-  if (rxlen>0){
-    ServoID=15;
-    Value=65535;
-    char* command = strtok(input, " ;\n");
-    cmd=command[0];
-    char* separator= strtok(NULL,' ');
-    if (separator != NULL) ServoID=atoi(separator);
-    ++separator;
-    Value=atoi(++separator);
-    TSerial.print(F("Command:"));TSerial.print(cmd);
-    TSerial.print(F(",ServoID:"));TSerial.print(ServoID);
-    TSerial.print(F(",Value:"));TSerial.println(Value);
-    switch (cmd){
-      case 'g': FlexiTimer2::stop();pwm.setPWM(ServoID,0,Value);break;
-      case 'G': PosServo(ServoID, (float)(int)Value);break;
-      case 'x': FlexiTimer2::stop();InitPWM();Srv.Detatch(-1);break;
-      case 'X': InitPWM();Srv.Attach(-1);FlexiTimer2::start();break;
-      case 'y': Srv.write(Mover.ServoIdx(0,ServoID),(float)(int)Value);
-                Srv.write(Mover.ServoIdx(1,ServoID),(float)(int)Value);
-                Srv.write(Mover.ServoIdx(2,ServoID),(float)(int)Value);
-                Srv.write(Mover.ServoIdx(3,ServoID),(float)(int)Value);
-                break;
-      case 'Y': SyncServoMove(Value,20);break;
-      case 'd': SetValue(ServoID, SRV_MODE,F("Direction? 0=straight 1=invert"),Value);break;
-      case 'N': SetValue(ServoID, SRV_MIN, F("Min, 300?"),Value);break;
-      case 'M': SetValue(ServoID, SRV_MAX, F("Max, 500?"),Value);break;
-      case 'r': SetValue(ServoID, SRV_REF90, F("Center Position"),Value);break;
-      case '0': SetValue(ServoID, SRV_REF0, F("-90 Degrees"),Value);break;
-      case 'R': SetValue(ServoID, SRV_REF180, F("90 Degrees"),Value);break;
-      case '?': Srv.PrintPos();break;
-      case '!': Srv.PrintPCA9685();break;
-      case '#': Srv.CalPrint();break;
-      case '*': Srv.InitServoParameters(ServoID,ServoID,SRV_MODE_INVALID,SERVOMIN,SERVOMAX,SERVOMIN,SERVOMAX-SERVOMIN/2,SERVOMAX);
-                if (UpdatesEnabled()){
-                  Srv.CalBackup((int)&NVM->ServoSpec);
-                }else{ PrintUpdateMessage();};
-                Srv.CalPrint();break;
-      case 'U': if ((input[1]=='N')&&(input[2]=='P')&&(input[3]=='R')&&(input[4]=='O')&&(input[5]=='T')){
-                  TSerial.println(input);
-                  EnableUpdates();
-                };
-                break;
-      case 'P': if ((input[1]=='R')&&(input[2]=='O')&&(input[3]=='T')&&(input[4]=='E')&&(input[5]=='C')&&(input[6]=='T')){
-                  TSerial.println(input);
-                  DisableUpdates();};break;
-//      case 'A': SwipeServo(Value,20);break;
-//      case 's': Position(ServoID,300);break;
-//      case 'S': Position(ServoID,100);break;
-      case 'W': Mover.SetSpeedFactor(Value);break;
-      case MOV_STEPFORWARD: notidle();Mover.Move(MOV_STEPFORWARD,1);break;
-      case MOV_STEPBACK: notidle(); Mover.Move(MOV_STEPBACK,1);break;
-      case MOV_TURNLEFT: notidle(); Mover.Move(MOV_TURNLEFT,1);break;
-      case MOV_TURNRIGHT: notidle(); Mover.Move(MOV_TURNRIGHT,1);break;
-      case MOV_STAND: notidle(); Mover.Move(MOV_STAND,0);break;
-      case MOV_SIT: notidle(); Mover.Move(MOV_SIT,0);break;
-//'      case MOV_HANDWAVE: Mover.Move(MOV_HANDWAVE,3);break;
-      case MOV_HANDSHAKE: notidle(); Mover.Move(MOV_HANDSHAKE,3);break;
-      case MOV_HEADUP: notidle(); Mover.Move(MOV_HEADUP,20);break;
-      case MOV_HEADDOWN: notidle(); Mover.Move(MOV_HEADUP,-20);break;
-      case MOV_NO: notidle(); Mover.Move(MOV_NO,3);break;
-      case '^': asm volatile ("  jmp 0");break;
-      case 'q': FormatBlueTooth();break;
-      case 'Q': CheckBlueTooth();break;
-      case 27: cmd=command[2];
-               switch (cmd)
-               {
-                case 65:TSerial.println("up");Mover.Move(MOV_STEPFORWARD,1);break;
-                case 66:TSerial.println("down");Mover.Move(MOV_STEPBACK,1);break;
-                case 67:TSerial.println("right");Mover.Move(MOV_TURNRIGHT,1);break;
-                case 68:TSerial.println("left");Mover.Move(MOV_TURNLEFT,1);break;
-                case 50:TSerial.println("ins");Mover.Move(MOV_HANDSHAKE,1);break;
-                case 51:TSerial.println("del");Mover.Move(MOV_HANDWAVE,1);break;
-                case 53:TSerial.println("pgup");Mover.Move(MOV_STAND,0);break;
-                case 54:TSerial.println("pgdn");Mover.Move(MOV_SIT,0);break;
-                default:TSerial.println((int)cmd);break;                
-               }
-               break;
-      case 'D' : ServoDebug=Value;TSerial.print(F("ServoDebug:"));
-                TSerial.println(Value);break;
-      default : TSerial.println("Unknown command:");
-                TSerial.println((int)command[0]);
-                TSerial.println((int)command[1]);
-                TSerial.println((int)command[2]);
-                PrintHelp();
-    }
-    TSerial.println("Done");
-    command = strtok(0, 10);
-  }
+  if (!TSerial.running)TSerial.go();
 }
 
 /*****************************

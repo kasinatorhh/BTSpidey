@@ -1,0 +1,15 @@
+Command:#,ServoID:15,Value:0
+Servo 0 Chan=0, Mode=1, Mini=105, Maxi=410, Ref-=65535, Ref9=315, Ref+=120, Path=305
+Servo 1 Chan=1, Mode=1, Mini=100, Maxi=473, Ref-=65535, Ref9=260, Ref+=473, Path=373
+Servo 2 Chan=2, Mode=1, Mini=150, Maxi=450, Ref-=65535, Ref9=320, Ref+=150, Path=300
+Servo 3 Chan=3, Mode=1, Mini=140, Maxi=450, Ref-=65535, Ref9=220, Ref+=440, Path=310
+Servo 4 Chan=4, Mode=1, Mini=100, Maxi=500, Ref-=65535, Ref9=320, Ref+=120, Path=400
+Servo 5 Chan=5, Mode=1, Mini=140, Maxi=450, Ref-=65535, Ref9=275, Ref+=450, Path=310
+Servo 6 Chan=6, Mode=1, Mini=115, Maxi=410, Ref-=65535, Ref9=190, Ref+=408, Path=295
+Servo 7 Chan=7, Mode=1, Mini=100, Maxi=490, Ref-=65535, Ref9=315, Ref+=110, Path=390
+Servo 8 Chan=8, Mode=1, Mini=150, Maxi=460, Ref-=65535, Ref9=290, Ref+=460, Path=310
+Servo 9 Chan=9, Mode=1, Mini=100, Maxi=400, Ref-=65535, Ref9=320, Ref+=115, Path=300
+Servo 10 Chan=10, Mode=1, Mini=100, Maxi=500, Ref-=65535, Ref9=280, Ref+=480, Path=400
+Servo 11 Chan=11, Mode=1, Mini=115, Maxi=420, Ref-=65535, Ref9=285, Ref+=115, Path=305
+Servo 12 Chan=12, Mode=1, Mini=110, Maxi=360, Ref-=65535, Ref9=230, Ref+=360, Path=250
+Done

@@ -24,6 +24,7 @@ enum Moves{
   MOV_HEADUP='5',
   MOV_HEADDOWN='6',
   MOV_NO='7',
+  MOV_TRANSPORT='+',//e.g. Disconnect
   MOV_LASTMOV=0
 };
 /* Constants for turn --------------------------------------------------------*/
@@ -48,13 +49,13 @@ const float turn_y0 = temp_b * sin(temp_alpha) - turn_y1 - length_side;
   /* variables for movement ----------------------------------------------------*/
 extern volatile float site_now[NUMLEGS][NUMAXIS];    //real-time coordinates of the end of each leg
 extern volatile float site_expect[NUMLEGS][NUMAXIS]; //expected coordinates of the end of each leg
+extern volatile uint8_t ControlMode[NUMLEGS];
 extern float temp_speed[NUMLEGS][NUMAXIS];   //each axis' speed, needs to be recalculated before each movement
 extern float move_speed;     //movement speed  
 extern float speed_multiple; //movement speed multiple
 extern float ServoNext[NUMSERVOS];
 extern float ServoSpeed[NUMSERVOS];
 extern float ServoDelta[NUMSERVOS];
-
 
 
 
@@ -71,6 +72,8 @@ class MoveCore{
   static uint8_t ServoIdx(uint8_t Leg, uint8_t axis){
     return Leg*3+axis;
   }
+  static void SetLegMode(uint8_t Leg, uint8_t Mode);
+  static void SetAllLegMode(uint8_t Mode);
   private:
   /***********************
    * Section does the Math work
@@ -81,6 +84,8 @@ class MoveCore{
 //here the Moves declaration, having access to the variables
   static void No(uint8_t count);//added by Kasinator
   static void sit(void);
+  static void transport(void);
+  static void startposition(void);
   static void stand(void);
   static void turn_left(unsigned int step);
   static void turn_right(unsigned int step);
@@ -95,6 +100,7 @@ class MoveCore{
   static void head_down(int i);
 //Math happens here:
   static void wait_reach(int leg);
+  static void wait_reach_ca(int leg);
   static void cartesian_to_polar(volatile float &alpha, volatile float &beta, volatile float &gamma, volatile float x, volatile float y, volatile float z);
   //     Head
   //Leg 1    3 Leg  Coxa(Alpha)   Thibia (Beta)  Femur (Gamma)

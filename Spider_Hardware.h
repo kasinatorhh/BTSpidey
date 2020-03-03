@@ -48,7 +48,7 @@ const float length_c = 27.5;//Coxa
 const float length_side = 93;//Body Servo Distance Left to Right
 const float z_absolute = -32; //turning position of Tibia-servo above ground
 /* Constants for movement ----------------------------------------------------*/
-const float z_default = -50, z_up = -25, z_boot = z_absolute;
+const float z_default = -50, z_up = -25, z_boot = z_absolute, z_transport = z_absolute+10;
 const float x_default = 62, x_offset = 0;
 const float y_start = 0, y_step = 40;
 const float y_default = x_default;

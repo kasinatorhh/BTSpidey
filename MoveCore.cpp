@@ -28,6 +28,7 @@ void head_down(int i);
 
 volatile float site_now[NUMLEGS][NUMAXIS];    //real-time coordinates of the end of each leg
 volatile float site_expect[NUMLEGS][NUMAXIS]; //expected coordinates of the end of each leg
+volatile uint8_t ControlMode[NUMLEGS]; //0 = Cartesian, 1 = Polar, 2 = Off
 float temp_speed[NUMLEGS][NUMAXIS];   //each axis' speed, needs to be recalculated before each movement
 float move_speed;     //movement speed  
 float speed_multiple = 1; //movement speed multiple
@@ -35,11 +36,43 @@ float ServoNext[NUMSERVOS];
 float ServoSpeed[NUMSERVOS];
 float ServoDelta[NUMSERVOS];
 
+void MoveCore::SetLegMode(uint8_t Leg, uint8_t Mode){
+    if ((ControlMode[Leg]==0)&&(Mode == 1)){//Switch from cartesian to polar control mode
+      ControlMode[Leg]=2; //Prevent accidential updates in ISR while updating variables
+      float alpha, beta, gamma;
+      cartesian_to_polar(alpha, beta, gamma, site_now[Leg][0], site_now[Leg][1], site_now[Leg][2]);
+      site_now[Leg][0]=alpha;
+      site_now[Leg][1]=beta;
+      site_now[Leg][2]=gamma;
+      //assume reached
+      site_expect[Leg][0]=alpha;
+      site_expect[Leg][1]=beta;
+      site_expect[Leg][2]=gamma;
+      temp_speed[Leg][0]=1;
+      temp_speed[Leg][1]=1;
+      temp_speed[Leg][2]=1;
+    }else if ((ControlMode[Leg]!=Mode)&&(Mode == 0)){
+      ControlMode[Leg]=0; //disable updates
+      set_site(Leg, x_default , y_start , z_boot);
+      for (int j = 0; j < 3; j++)
+      {
+        site_now[Leg][j] = site_expect[Leg][j];
+      }
+    }
+    ControlMode[Leg]=Mode;
+  }
+
 void MoveCore::Move(Moves MOV, int Parameter){
   TSerial.print("Mover: ");
   TSerial.print(MOV);
   TSerial.print(' ');
   TSerial.println(Parameter);
+  for (int leg = 0;leg<4;leg++){
+    if (ControlMode[leg]!=0){
+      startposition();
+      SetLegMode(leg,0);
+    }
+  }
   switch(MOV){
     case MOV_INIT:
       set_site(0, x_default - x_offset, y_start + y_step, z_boot);
@@ -60,6 +93,7 @@ void MoveCore::Move(Moves MOV, int Parameter){
       case MOV_TURNRIGHT: turn_right(1);break;
       case MOV_STAND: stand();break;
       case MOV_SIT: sit();break;
+      case MOV_TRANSPORT: transport(); break;
       case MOV_HANDWAVE: hand_wave(Parameter);break;
       case MOV_HANDSHAKE: hand_shake(Parameter);break;
       case MOV_HEADUP: head_up(Parameter);break;
@@ -94,6 +128,66 @@ void MoveCore::No(uint8_t count){
   Srv.write(HEADSERVO,90);
   delay(100);
 //  HeadServo.detach();
+}
+
+void MoveCore::SetAllLegMode(uint8_t mode){
+  for (int leg = 0; leg < 4; leg++)
+  {
+    SetLegMode(leg,mode);//change to Polar Mode. Remembers current calculated positions and sets polar coordinates to reached.
+    TSerial.print(F("Leg "));
+    TSerial.print(leg);
+    if (mode==1){
+      TSerial.print(F(" Tibia(alpha)="));
+      TSerial.print(site_now[leg][0]);
+      TSerial.print(F(" femur(beta)="));
+      TSerial.print(site_now[leg][1]);
+      TSerial.print(F(" coxa(gamma)="));
+      TSerial.println(site_now[leg][2]);
+    }else if (mode==0){
+      TSerial.print(F(" x="));
+      TSerial.print(site_now[leg][0]);
+      TSerial.print(F(" y="));
+      TSerial.print(site_now[leg][1]);
+      TSerial.print(F(" z="));
+      TSerial.println(site_now[leg][2]);
+    }
+  }
+}
+
+void MoveCore::startposition(){  
+  const int8_t Final[4][3] = {{72,-50,-32},
+                              {72,-50,-32},
+                              {80,-61,0},
+                              {80,-61,0}};
+  for (int leg=0;leg<4;leg++){
+    SetLegMode(leg,1);
+    set_site(leg, Final[leg][0],Final[leg][1],Final[leg][2]);
+    wait_reach(leg);    
+  }
+  SetAllLegMode(2);//no service until update
+}
+
+void MoveCore::transport(){
+  const float Coords[][3]={{KEEP, KEEP, z_transport},
+                            {KEEP,KEEP,90},
+                            {70,KEEP,KEEP},
+                            {KEEP,-90,KEEP},
+                            {-20,KEEP,KEEP}};
+  move_speed = 0.4;
+  for (int substep=0;substep<5;substep++){
+    for (int leg = 0; leg < 4; leg++)
+    {
+      set_site(leg, Coords[substep][0],Coords[substep][1],Coords[substep][2]);
+    }
+    wait_all_reach();
+    SetAllLegMode(1);//noISR Service
+  }
+  SetAllLegMode(2);//noISR Service
+  for (int i = 0; i<4; i++)
+    for (int j = 0; j < 3; j++){
+      Srv.writeCount(ServoIdx(i,j),0);
+    }
+  TSerial.println(F("Robot is in Transport Position"));
 }
 
 void MoveCore::sit(void)
@@ -617,24 +711,33 @@ void MoveCore::servo_service(void)
 
   for (int i = 0; i < 4; i++)
   {
-    for (int j = 0; j < 3; j++)
-    {
-      if (abs(site_now[i][j] - site_expect[i][j]) >= abs(temp_speed[i][j]))
-        site_now[i][j] += temp_speed[i][j];
-      else
-        site_now[i][j] = site_expect[i][j];
+    if (ControlMode[i]!=2){
+      for (int j = 0; j < 3; j++)
+      {
+        if (abs(site_now[i][j] - site_expect[i][j]) >= abs(temp_speed[i][j]))
+          site_now[i][j] += temp_speed[i][j];
+        else
+          site_now[i][j] = site_expect[i][j];
+      }
+    }
+    
+    if (ControlMode[i]==0){ //Kartesian to Polar Conversion
+      cartesian_to_polar(alpha, beta, gamma, site_now[i][0], site_now[i][1], site_now[i][2]);
+      if (ServoDebug==dbgPolarToServo){
+        TSerial.print("ISRServos:");TSerial.print(i);TSerial.print(":");TSerial.print(alpha); TSerial.print(":"); TSerial.print(beta);TSerial.print(":"); TSerial.println(gamma);
+      }
+    }else{ // Polar Mode
+      alpha = site_now[i][0];
+      beta = site_now[i][1];
+      gamma = site_now[i][2];
+    }
+    if (ControlMode[i]!=2){
+      //Direction Conversion was done already through calibration.
+      Srv.write(ServoIdx(i,0), gamma);//coxa (Body-Side)
+      Srv.write(ServoIdx(i,1), alpha);//Tibia (Middle)
+      Srv.write(ServoIdx(i,2), beta);//Femur (Tip)
     }
 
-    cartesian_to_polar(alpha, beta, gamma, site_now[i][0], site_now[i][1], site_now[i][2]);
-    if (ServoDebug==dbgPolarToServo){
-      TSerial.print("ISRServos:");TSerial.print(i);TSerial.print(":");TSerial.print(alpha); TSerial.print(":"); TSerial.print(beta);TSerial.print(":"); TSerial.println(gamma);
-    }
-
-    //Direction Conversion was done already through calibration.
-    beta = beta-90;
-    Srv.write(ServoIdx(i,0), gamma);//coxa (Body-Side)
-    Srv.write(ServoIdx(i,1), alpha);//Tibia (Middle)
-    Srv.write(ServoIdx(i,2), beta);//Femur (Tip)
   }
 }
 
@@ -649,6 +752,27 @@ void MoveCore::wait_reach(int leg)
       if (site_now[leg][1] == site_expect[leg][1])
         if (site_now[leg][2] == site_expect[leg][2])
           break;
+}
+/*
+  - wait one of end points move to expect site
+  - blocking function
+   ---------------------------------------------------------------------------*/
+void MoveCore::wait_reach_ca(int leg)
+{ while (1){
+    TSerial.print(F("WaitReachCa, Leg: "));
+    TSerial.print(leg);
+    for (int axis=0;axis<3;axis++){
+      TSerial.write(',');
+      TSerial.print(site_now[leg][axis]);
+      TSerial.write('-');
+      TSerial.print(site_expect[leg][axis]);
+    }
+    TSerial.println();
+    if (abs(site_now[leg][0] - site_expect[leg][0])<=temp_speed[leg][0])
+      if (abs(site_now[leg][1] - site_expect[leg][1])<=temp_speed[leg][1])
+        if (abs(site_now[leg][2] - site_expect[leg][2])<=temp_speed[leg][2])
+          break;
+   }
 }
 
 /*
@@ -691,6 +815,7 @@ void MoveCore::cartesian_to_polar(volatile float &alpha, volatile float &beta, v
   alpha = alpha / pi * 180;
   beta = beta / pi * 180;
   gamma = gamma / pi * 180;
+  beta = beta-90;
 }
 
 /*
@@ -719,9 +844,10 @@ void MoveCore::set_site(int leg, float x, float y, float z)
     length_y = y - site_now[leg][1];
   if (z != KEEP)
     length_z = z - site_now[leg][2];
-
   float length = sqrt(pow(length_x, 2) + pow(length_y, 2) + pow(length_z, 2));
-
+  if (ControlMode[leg]!=0){
+    length=5;
+  }
   //make sure we end up in all directions at final position
   temp_speed[leg][0] = length_x / length * move_speed * speed_multiple;
   temp_speed[leg][1] = length_y / length * move_speed * speed_multiple;
